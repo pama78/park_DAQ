@@ -4,11 +4,10 @@
 #include <bc_radio.h>
 
 //* Constants
-#define SR04_DATA_STREAM_SAMPLES 6
+#define HC_SR04_DATA_STREAM_SAMPLES 6
 #define INITIAL_DISTANCE_MAXIMUM_MM 2500.
 #define SR04_LONG_SLEEP 2000
 #define SR04_SHORT_SLEEP 300
-
 
 
 // * Structures
@@ -20,8 +19,8 @@ bc_button_t button;
 uint16_t button_event_count = 0;
 
 //distance
-  BC_DATA_STREAM_FLOAT_BUFFER(stream_buffer_distance_meter, SR04_DATA_STREAM_SAMPLES)
-  bc_data_stream_t stream_distance_meter;
+  BC_DATA_STREAM_FLOAT_BUFFER(stream_buffer_distance_meter, HC_SR04_DATA_STREAM_SAMPLES)
+  bc_data_stream_t stream_distance;
 
 //#Variables
   int loop_counter = 1;
@@ -37,10 +36,10 @@ void button_event_handler(bc_button_t *self, bc_button_event_t event, void *even
 {
     bc_log_info("#button_event_handler initiated\r\n");
     (void) self;
-    uint16_t *event_count = (uint16_t *) event_param;
 
     if (event == BC_BUTTON_EVENT_PRESS)
     {
+        uint16_t *event_count = (uint16_t *) event_param;
         bc_led_set_mode(&led, BC_LED_MODE_TOGGLE);
         bc_log_info("button pressed");
         (*event_count)++;
@@ -48,45 +47,61 @@ void button_event_handler(bc_button_t *self, bc_button_event_t event, void *even
     }
 }
 
-void proximity_sensor_hanler(bc_hc_sr04_event_t event, void *event_param)
+void hc_sr04_event_handler(bc_hc_sr04_event_t event, void *event_param)
 {
-    float distance;
-    bc_log_info("#proximity_sensor_hanler initiated\r\n");
+    bc_log_info("#hc_sr04_event_handler initiated\r\n");
 
     if (event == BC_HC_SR04_EVENT_UPDATE)
     {
+  	    float distance;
+
        if (bc_hc_sr04_get_distance_millimeter(&distance))
        {
-         bc_data_stream_feed(&stream_distance_meter, &distance);
-         bc_log_info(" ->Feed real distance (%0.0f)\r\n", floor(distance));
+         bc_data_stream_feed(&stream_distance, &distance);
+         bc_log_info("HC-SR04 update: %0.0f mm\r\n", floor(distance));
        }
-    }
-
-    if (sr04_loop_counter<SR04_DATA_STREAM_SAMPLES)
+       else
+        {
+            bc_log_error("HC-SR04 error");
+        }
+    } 
+    else if (event == BC_HC_SR04_EVENT_ERROR)
     {
-    sr04_loop_counter++;
-    //bc_log_info("proximity_sensor_hanler - set short 500 - %i/%i \r\n",  sr04_loop_counter,SR04_DATA_STREAM_SAMPLES);
-    //bc_hc_sr04_set_update_interval(SR04_UPDATE_INTERVAL_SECONDS * SR04_UPDATE_INTERVAL_SHORT);
+        bc_log_error("HC-SR04 error");
+    }
+}
 
-      if (sr04_current_sleep == SR04_LONG_SLEEP)
-      {
-       bc_log_info(" sr04 about to set shortsleep  %i \r\n", SR04_LONG_SLEEP);
-       sr04_current_sleep=SR04_SHORT_SLEEP;  
-       bc_log_info(" - proximity_sensor_hanler -  set short sleep\r\n");
+void measurement_task(void *param)
+{
+    bc_log_info("measurement_task - entered");
 
-
-       //pusobi problemy: bc_hc_sr04_set_update_interval(SR04_SHORT_SLEEP);
-      }
+    static int counter = 0;
+    if (counter < HC_SR04_DATA_STREAM_SAMPLES)
+    {
+        counter++;
+        bc_log_info("Burst measure %i", counter);
+        bc_hc_sr04_measure();
+        bc_scheduler_plan_current_relative(300);
     }
     else
     {
-     sr04_loop_counter=0;
-     sr04_current_sleep=SR04_LONG_SLEEP; 
-     bc_log_info(" - proximity_sensor_hanler - about to set long sleep: %i \r\n", sr04_current_sleep);
-    //pusobi problemy: bc_hc_sr04_set_update_interval(SR04_LONG_SLEEP);
-     bc_log_info(" - proximity_sensor_hanler - set long end: %i %i \r\n", sr04_loop_counter,SR04_DATA_STREAM_SAMPLES);
+        counter = 0;
+        float median;
+        if (bc_data_stream_get_median(&stream_distance, &median))
+        {
+            bc_log_info("Distance median: %0.0f mm", median);
+        }
+        else
+        {
+            bc_log_info("Distance median: ?");
+        }
+        bc_log_info("Reset data stream - wait 10s");
+        bc_data_stream_reset(&stream_distance);
+        bc_scheduler_plan_current_relative(10000);
     }
 }
+
+
 
 void send_message_to_server()
 {
@@ -141,26 +156,30 @@ void send_message_to_server()
 
 void application_init(void)
 {
-  bc_usb_cdc_init();
-  bc_log_info("#application_init started\r\n");
+  bc_usb_cdc_init(); //mozna bude lepsi log_init
+  //bc_log_init(BC_LOG_LEVEL_DEBUG, BC_LOG_TIMESTAMP_ABS);
+  bc_log_info("#application_init started V3\r\n");
 
     // Initialize LED
     bc_led_init(&led, BC_GPIO_LED, false, false);
     bc_led_set_mode(&led, BC_LED_MODE_ON);
-
 
     // Initialize button
     bc_button_init(&button, BC_GPIO_BUTTON, BC_GPIO_PULL_DOWN, false);
     bc_button_set_event_handler(&button, button_event_handler, NULL);
 
     //initialize ultrasonic
-    bc_data_stream_init(&stream_distance_meter, SR04_DATA_STREAM_SAMPLES, &stream_buffer_distance_meter);
+ //   bc_data_stream_init(&stream_distance, HC_SR04_DATA_STREAM_SAMPLES / 2, &stream_buffer_distance_meter);
+      bc_data_stream_init(&stream_distance, HC_SR04_DATA_STREAM_SAMPLES , &stream_buffer_distance_meter);
+   
     bc_hc_sr04_init();
-    bc_hc_sr04_set_event_handler(proximity_sensor_hanler, NULL);
-    // bc_hc_sr04_set_update_interval(SR04_UPDATE_INTERVAL_SECONDS * 1000);
-    bc_hc_sr04_set_update_interval(2000);
+    bc_hc_sr04_set_event_handler(hc_sr04_event_handler, NULL);
+   // bc_hc_sr04_set_update_interval(SR04_SHORT_SLEEP);
+    bc_scheduler_register(measurement_task, NULL, 0);
+    //bc_hc_sr04_set_update_interval(5000);
 
     //init radio
+     bc_radio_init(BC_RADIO_MODE_NODE_SLEEPING);
      bc_log_info("radio pairing request\r\n");
 
      bc_radio_pairing_request(FIRMWARE, VERSION);
@@ -175,12 +194,12 @@ void application_task(void *param)
     loop_counter++;
 
      //get medians (lux+distance is global)
-    if (bc_data_stream_get_median(&stream_distance_meter, &dist_average))  { bc_log_info (" -current distance median is: %0.0f \r\n", dist_average);}
+ //   if (bc_data_stream_get_median(&stream_distance, &dist_average))  { bc_log_info (" -current distance median is: %0.0f \r\n", dist_average);}
 
-    bc_log_info("calling send_message_to_server\r\n");
-    send_message_to_server();
+//    bc_log_info("calling send_message_to_server\r\n");
+//    send_message_to_server();
 
-     bc_log_info("set plan relative 1000\r\n");
-     bc_scheduler_plan_current_relative(1000);
+     bc_log_info("set plan relative 3000\r\n");
+     bc_scheduler_plan_current_relative(3000);
 }
 
