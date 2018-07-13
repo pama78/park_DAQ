@@ -1,8 +1,11 @@
 #include <application.h>
 
+
 #include <usb_talk.h>
 
+
 #include <bc_usb_cdc.h>
+
 
 #include <bc_radio.h>
 
@@ -120,7 +123,7 @@ void send_message_to_server()
       buffer[2] = (int)my_device_address >> 16;  //id of client
       buffer[3] = (int)my_device_address >> 24;  //id of client
 
-      DEBUG("@new serial: %i",(int)my_device_address);
+      DEBUG("@new  serial: %i",(int)my_device_address);
       DEBUG("@@atsha204_event_handler - detected serial (%i) \r\n", (int)serial );
       DEBUG("@@radio init - detected serial (%i) \r\n", (int)my_device_address );
       DEBUG("@@my_device_address:%i @@my_device_address_buff=%i \n\r",

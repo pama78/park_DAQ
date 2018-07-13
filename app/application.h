@@ -1,4 +1,5 @@
 #ifndef _APPLICATION_H
+
 #define _APPLICATION_H
 
 #ifndef FIRMWARE
