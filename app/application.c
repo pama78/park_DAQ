@@ -1,6 +1,9 @@
 #include <application.h>
+
 #include <usb_talk.h>
+
 #include <bc_usb_cdc.h>
+
 #include <bc_radio.h>
 
 //* Constants
