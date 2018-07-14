@@ -1,7 +1,7 @@
 #include <bc_log.h>
 #include <bc_uart.h>
 #include <bc_usb_cdc.h>
-
+ 
 typedef struct
 {
     bc_log_level_t level;
@@ -15,7 +15,6 @@ typedef struct
 #ifndef RELEASE
 
 static bc_log_t _bc_log;
-
 static void _bc_log_message(bc_log_level_t level, char id, const char *format, va_list ap);
 
 void bc_log_init(bc_log_level_t level, bc_log_timestamp_t timestamp)
